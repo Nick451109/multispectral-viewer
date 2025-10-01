@@ -67,10 +67,10 @@ with gr.Blocks() as demo:
     with gr.Row():
         folder_text = gr.Textbox(label="Ruta de carpeta", placeholder="/Volumes/T7/NICK/resultados/haze_left/aliked")
     with gr.Row():
-        scan_btn = gr.Button("🔍 Escanear carpeta")
+        scan_btn = gr.Button("Escanear carpeta")
         file_dropdown = gr.Dropdown(choices=[], label="Selecciona imagen")
         channels = gr.CheckboxGroup(choices=[], label="Canales", interactive=True)
-    output = gr.Image(type="numpy", label="Vista TIFF")
+    output = gr.Image(type="numpy", label="Vista TIFF" )#, height=600, width=800)
 
     scan_btn.click(
         lambda d: gr.update(choices=get_tiff_files(d)),
