@@ -15,12 +15,36 @@ def get_tiff_files(image_dir):
 def normalize(img):
     return (img - img.min()) / (img.max() - img.min() + 1e-6)
 
-def view_tiff(image_dir, filename, channels):
-    """Carga y visualiza una imagen TIFF con los canales seleccionados"""
+def resolve_path(base_dir, filename):
+    """Devuelve la ruta absoluta manejando dropdown (str) y upload (list)."""
     if not filename:
         return None
+    if isinstance(filename, list):  # si viene de File upload
+        if len(filename) == 0:
+            return None
+        return filename[0]
+    return os.path.join(base_dir, filename)  # si viene de dropdown
 
-    path = os.path.join(image_dir, filename)
+def update_channels_from_path(path):
+    """Actualiza dinámicamente los canales según la imagen"""
+    if not path:
+        return gr.update(choices=[], value=[])
+    if isinstance(path, list):
+        path = path[0]
+    img = tifffile.imread(path)
+    num_channels = img.shape[-1] if img.ndim == 3 else 1
+    return gr.update(
+        choices=[f"Canal_{i}" for i in range(num_channels)],
+        value=[f"Canal_{i}" for i in range(min(num_channels, 4))]
+    )
+
+def view_tiff_from_path(path, channels):
+    """Carga y visualiza una imagen TIFF desde una ruta completa"""
+    if not path:
+        return None
+    if isinstance(path, list):
+        path = path[0]
+
     img = tifffile.imread(path)
 
     if img.ndim == 2:
@@ -36,50 +60,44 @@ def view_tiff(image_dir, filename, channels):
 
         data = normalize(img[..., idx])
 
-        # Comportamiento RGB clásico
-        if idx == 0:   # Red
+        if idx == 0:
             canvas[..., 0] += data
-        elif idx == 1: # Green
+        elif idx == 1:
             canvas[..., 1] += data
-        elif idx == 2: # Blue
+        elif idx == 2:
             canvas[..., 2] += data
         else:
-            # Cualquier otro canal lo mostramos en "inferno" como overlay
             thermal = cm.inferno(data)[..., :3]
             canvas = np.maximum(canvas, thermal)
 
     canvas = np.clip(canvas, 0, 1)
     return (canvas * 255).astype(np.uint8)
 
-def update_channels(image_dir, filename):
-    """Actualiza dinámicamente la lista de canales"""
-    if not filename:
-        return gr.update(choices=[], value=[])
-    path = os.path.join(image_dir, filename)
-    img = tifffile.imread(path)
-    num_channels = img.shape[-1] if img.ndim == 3 else 1
-    return gr.update(
-        choices=[f"Canal_{i}" for i in range(num_channels)],
-        value=[f"Canal_{i}" for i in range(min(num_channels, 4))]  # por defecto RGB + IR
-    )
-
 with gr.Blocks() as demo:
     with gr.Row():
-        folder_text = gr.Textbox(label="Ruta de carpeta", placeholder="/Volumes/T7/NICK/resultados/haze_left/aliked")
+        file_upload = gr.File(label="O sube/arrastra un archivo TIFF", type="filepath")
+
     with gr.Row():
+        folder_text = gr.Textbox(label="Ruta de carpeta", placeholder="/ruta/a/carpeta")
         scan_btn = gr.Button("Escanear carpeta")
-        file_dropdown = gr.Dropdown(choices=[], label="Selecciona imagen")
-        channels = gr.CheckboxGroup(choices=[], label="Canales", interactive=True)
-    output = gr.Image(type="numpy", label="Vista TIFF" )#, height=600, width=800)
+    with gr.Row():
+        file_dropdown = gr.Dropdown(choices=[], label="Selecciona imagen desde carpeta")
 
-    scan_btn.click(
-        lambda d: gr.update(choices=get_tiff_files(d)),
-        inputs=folder_text,
-        outputs=file_dropdown
-    )
+    channels = gr.CheckboxGroup(choices=[], label="Canales", interactive=True)
+    output = gr.Image(type="numpy", label="Vista TIFF")#, height=600, width=800)
 
-    file_dropdown.change(update_channels, inputs=[folder_text, file_dropdown], outputs=channels)
-    file_dropdown.change(view_tiff, inputs=[folder_text, file_dropdown, channels], outputs=output)
-    channels.change(view_tiff, inputs=[folder_text, file_dropdown, channels], outputs=output)
+    # Dropdown flow
+    scan_btn.click(lambda d: gr.update(choices=get_tiff_files(d)), inputs=folder_text, outputs=file_dropdown)
+    file_dropdown.change(lambda d, f: update_channels_from_path(resolve_path(d, f)),
+                         inputs=[folder_text, file_dropdown], outputs=channels)
+    file_dropdown.change(lambda d, f, c: view_tiff_from_path(resolve_path(d, f), c),
+                         inputs=[folder_text, file_dropdown, channels], outputs=output)
+    channels.change(lambda d, f, c: view_tiff_from_path(resolve_path(d, f), c),
+                    inputs=[folder_text, file_dropdown, channels], outputs=output)
+
+    # Upload flow
+    file_upload.change(update_channels_from_path, inputs=file_upload, outputs=channels)
+    file_upload.change(view_tiff_from_path, inputs=[file_upload, channels], outputs=output)
+    channels.change(view_tiff_from_path, inputs=[file_upload, channels], outputs=output)
 
 demo.launch(server_name="127.0.0.1", server_port=7860)
