@@ -1,2 +1,5 @@
+python -m venv .venv
+source .venv/bin/activate
+
 pip install gradio==4.29.0 gradio-client==0.16.1 tifffile numpy matplotlib
 /Volumes/T7/NICK/resultados/haze_left/aliked/
